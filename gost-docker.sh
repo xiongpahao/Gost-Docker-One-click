@@ -138,7 +138,7 @@ while true; do
     if [[ $DOMAIN =~ ^[a-zA-Z0-9.-]+$ ]]; then
         break
     else
-        echo_info "请输入有效的域名："
+        echo_info "请输入有效的域名喔！"
     fi
 done
 
@@ -148,7 +148,7 @@ while true; do
     if [[ -n "$USER" ]]; then
         break
     else
-        echo_info "请输入有效的用户名："
+        echo_info "请输入有效的用户名喔！"
     fi
 done
 
@@ -158,7 +158,7 @@ while true; do
     if [[ ${#PASS} -ge 8 ]]; then
         break
     else
-        echo_info "请输入至少八位的密码："
+        echo_info "请输入至少八位的密码喔！"
     fi
 done
 
@@ -168,7 +168,7 @@ while true; do
     if [[ $PORT1 -ge 1 && $PORT1 -le 65536 ]]; then
         break
     else
-        echo_info "请输入有效的端口号："
+        echo_info "请输入有效的端口号喔！"
     fi
 done
 
@@ -191,7 +191,7 @@ while true; do
     if [[ $PORT2 -ge 1 && $PORT2 -le 65536 && $PORT2 -ne $PORT1 ]]; then
         break
     else
-        echo_info "请输入有效的端口号："
+        echo_info "请输入有效的端口号喔！"
     fi
 done
 
