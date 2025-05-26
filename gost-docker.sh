@@ -60,6 +60,7 @@ if [[ "$install_docker" == "y" || "$install_docker" == "Y" ]]; then
         check_success
     else
         echo_info "当前系统为：$PRETTY_NAME，请查阅官网指南手动安装Docker CE: https://docs.docker.com/engine/install/"
+        exit 1
     fi
 fi
 
