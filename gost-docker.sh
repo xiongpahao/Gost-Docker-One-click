@@ -176,6 +176,7 @@ CERT=${CERT_DIR}/live/${DOMAIN}/fullchain.pem
 KEY=${CERT_DIR}/live/${DOMAIN}/privkey.pem
 
 sudo docker run -d --name gost \
+    --restart always \
     -v ${CERT_DIR}:${CERT_DIR}:ro \
     --net=host gogost/gost \
     -L "http2://${USER}:${PASS}@0.0.0.0:${PORT1}?certFile=${CERT}&keyFile=${KEY}&probeResistance=code:404&knock=www.google.com"
@@ -194,6 +195,7 @@ while true; do
 done
 
 sudo docker run -d --name gost-warp \
+    --restart always \
     -v ${CERT_DIR}:${CERT_DIR}:ro \
     --net=host gogost/gost \
     -L "http2://${USER}:${PASS}@0.0.0.0:${PORT2}?certFile=${CERT}&keyFile=${KEY}&probeResistance=code:404&knock=www.google.com" \
