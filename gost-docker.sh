@@ -1,55 +1,71 @@
 #!/bin/bash
+
 set -e
 
-# 功能状态检查
+# 颜色和样式定义
+GREEN='\033[1;92m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+function echo_info() {
+    echo -e "${GREEN}${BOLD}$1${RESET}"
+}
+
+function step_failed() {
+    echo -e "\033[1;91m步骤失败，脚本终止。\033[0m"
+    exit 1
+}
+
 function check_success() {
     if [ $? -ne 0 ]; then
-        echo "上一步执行失败，脚本终止"
-        exit 1
+        step_failed
     fi
 }
 
-### 第一部分：安装 Docker CE ###
-echo "正在尝试安装Docker CE"
+# 第零部分：是否安装 Docker CE
+read -rp "是否需要先安装Docker CE（y/n）？" install_docker
 
-. /etc/os-release
-if [[ "$ID" == "ubuntu" ]]; then
-    for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates curl
-    sudo install -m 0755 -d /etc/apt/keyrings
-    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-    ${UBUNTU_CODENAME:-$VERSION_CODENAME} stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-elif [[ "$ID" == "debian" ]]; then
-    for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates curl
-    sudo install -m 0755 -d /etc/apt/keyrings
-    sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-    sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-    $VERSION_CODENAME stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-else
-    echo "请查阅官网指南手动安装Docker CE: https://docs.docker.com/engine/install/"
-    exit 1
+if [[ "$install_docker" == "y" || "$install_docker" == "Y" ]]; then
+    echo_info "正在尝试安装Docker CE"
+    . /etc/os-release
+    if [[ "$ID" == "ubuntu" ]]; then
+        echo_info "检测到系统为Ubuntu $VERSION_ID，将自动安装Docker CE"
+        for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates curl
+        sudo install -m 0755 -d /etc/apt/keyrings
+        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+        echo \  
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \ 
+          $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        check_success
+    elif [[ "$ID" == "debian" ]]; then
+        echo_info "检测到系统为Debian $VERSION_ID，将自动安装Docker CE"
+        for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates curl
+        sudo install -m 0755 -d /etc/apt/keyrings
+        sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+        echo \  
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \ 
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        check_success
+    else
+        echo_info "当前系统为：$PRETTY_NAME，请查阅官网指南手动安装Docker CE: https://docs.docker.com/engine/install/"
+    fi
 fi
-check_success
 
-### 第二部分：开启 TCP BBR ###
-echo "正在开启TCP BBR"
+# 第二部分：开启 TCP BBR
+
+echo_info "正在开启TCP BBR"
 sudo modprobe tcp_bbr
 
 echo "tcp_bbr" | sudo tee --append /etc/modules-load.d/modules.conf
@@ -59,26 +75,30 @@ echo "net.core.default_qdisc=fq" | sudo tee --append /etc/sysctl.conf
 echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee --append /etc/sysctl.conf
 
 sudo sysctl -p
+
 sysctl net.ipv4.tcp_available_congestion_control
 sysctl net.ipv4.tcp_congestion_control
-lsmod | grep bbr
-check_success
 
-### 第三部分：Certbot申请证书 ###
-echo "尝试申请证书"
+if lsmod | grep -q bbr; then
+    echo_info "开启TCP BBR成功！"
+else
+    step_failed
+fi
+
+# 第三部分：Certbot 申请证书
+
+echo_info "尝试申请证书"
 sudo snap install --classic certbot
-sudo ln -s /snap/bin/certbot /usr/bin/certbot
-sudo certbot certonly --standalone
-check_success
+sudo ln -sf /snap/bin/certbot /usr/bin/certbot
+sudo certbot certonly --standalone || step_failed
 
-### 第四部分：Docker部署Cloudflare Warp ###
-echo "正在安装Cloudflare Warp"
-mkdir -p /root/docker
-cd /root/docker
+# 第四部分：部署 Cloudflare Warp
 
-cat <<EOF > docker-compose.yml
-version: "3"
+echo_info "正在安装Cloudflare Warp"
+mkdir -p /usr/local/docker
+cd /usr/local/docker || step_failed
 
+cat <<EOF | sudo tee docker-compose.yml
 services:
   warp:
     image: caomingjun/warp
@@ -101,52 +121,56 @@ services:
       - ./data:/var/lib/cloudflare-warp
 EOF
 
-docker compose up -d
+sudo docker compose up -d
 check_success
 
 WARP_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' warp)
-echo "WARP_IP: $WARP_IP"
+echo_info "WARP 容器 IP 地址为: $WARP_IP"
 
-### 第五部分：部署Gost代理 ###
-echo "开始部署Gost代理"
+# 第五部分：部署 Gost 代理
 
+echo_info "开始部署Gost代理"
+
+# 获取域名
 while true; do
-    read -p "请输入绑定的域名：" DOMAIN
-    if [[ "$DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+    read -rp "请输入绑定的域名：" DOMAIN
+    if [[ $DOMAIN =~ ^[a-zA-Z0-9.-]+$ ]]; then
         break
     else
-        echo "请输入有效的域名："
+        echo_info "请输入有效的域名："
     fi
 done
 
+# 获取用户名
 while true; do
-    read -p "请输入用户名：" USER
+    read -rp "请输入用户名：" USER
     if [[ -n "$USER" ]]; then
         break
     else
-        echo "请输入有效的用户名："
+        echo_info "请输入有效的用户名："
     fi
 done
 
+# 获取密码
 while true; do
-    read -p "请输入密码（八位及以上）：" PASS
-    if [ ${#PASS} -ge 8 ]; then
+    read -rp "请输入密码（八位及以上）：" PASS
+    if [[ ${#PASS} -ge 8 ]]; then
         break
     else
-        echo "请输入至少八位的密码："
+        echo_info "请输入至少八位的密码："
     fi
 done
 
+# 获取端口 PORT1
 while true; do
-    read -p "请输入要配置的端口号（1~65536）：" PORT1
-    if [[ "$PORT1" =~ ^[0-9]+$ && "$PORT1" -ge 1 && "$PORT1" -le 65536 ]]; then
+    read -rp "请输入要配置的端口号（1~65536）：" PORT1
+    if [[ $PORT1 -ge 1 && $PORT1 -le 65536 ]]; then
         break
     else
-        echo "请输入有效的端口号："
+        echo_info "请输入有效的端口号："
     fi
 done
 
-BIND_IP=0.0.0.0
 CERT_DIR=/etc/letsencrypt
 CERT=${CERT_DIR}/live/${DOMAIN}/fullchain.pem
 KEY=${CERT_DIR}/live/${DOMAIN}/privkey.pem
@@ -154,37 +178,38 @@ KEY=${CERT_DIR}/live/${DOMAIN}/privkey.pem
 sudo docker run -d --name gost \
     -v ${CERT_DIR}:${CERT_DIR}:ro \
     --net=host gogost/gost \
-    -L "http2://${USER}:${PASS}@${BIND_IP}:${PORT1}?certFile=${CERT}&keyFile=${KEY}&probeResistance=code:404&knock=www.google.com"
+    -L "http2://${USER}:${PASS}@0.0.0.0:${PORT1}?certFile=${CERT}&keyFile=${KEY}&probeResistance=code:404&knock=www.google.com"
+
+# 获取端口 PORT2
+
+echo_info "开始部署Gost-Warp代理"
+
+while true; do
+    read -rp "请指定Gost-Warp代理的端口号（1~65536）：" PORT2
+    if [[ $PORT2 -ge 1 && $PORT2 -le 65536 && $PORT2 -ne $PORT1 ]]; then
+        break
+    else
+        echo_info "请输入有效的端口号："
+    fi
+done
+
+sudo docker run -d --name gost-warp \
+    -v ${CERT_DIR}:${CERT_DIR}:ro \
+    --net=host gogost/gost \
+    -L "http2://${USER}:${PASS}@0.0.0.0:${PORT2}?certFile=${CERT}&keyFile=${KEY}&probeResistance=code:404&knock=www.google.com" \
+    -F "socks5://${WARP_IP}:1080"
+
 check_success
 
-read -p "是否要部署Gost-Warp代理（y/n）？" deploy_warp
-if [[ "$deploy_warp" == "y" ]]; then
-    while true; do
-        read -p "请指定Gost-Warp代理的端口号（1~65536）：" PORT2
-        if [[ "$PORT2" =~ ^[0-9]+$ && "$PORT2" -ge 1 && "$PORT2" -le 65536 && "$PORT2" -ne "$PORT1" ]]; then
-            break
-        else
-            echo "请输入有效的端口号："
-        fi
-    done
+echo_info "已经成功部署Gost和Gost-Warp代理！"
+echo "--Gost代理：域名：$DOMAIN; 用户名：$USER；密码：$PASS；端口：$PORT1"
+echo "--Gost-Warp代理：域名：$DOMAIN; 用户名：$USER；密码：$PASS；端口：$PORT2"
 
-    sudo docker run -d --name gost-warp \
-        -v ${CERT_DIR}:${CERT_DIR}:ro \
-        --net=host gogost/gost \
-        -L "http2://${USER}:${PASS}@${BIND_IP}:${PORT2}?certFile=${CERT}&keyFile=${KEY}&probeResistance=code:404&knock=www.google.com" \
-        -F "socks5://${WARP_IP}:1080"
-    check_success
+# 第六部分：设置证书自动更新
 
-    echo "已经成功部署Gost和Gost-Warp代理！"
-    echo "--Gost代理：域名：${DOMAIN}; 用户名：${USER}；密码：${PASS}；端口：${PORT1}"
-    echo "--Gost-Warp代理：域名：${DOMAIN}; 用户名：${USER}；密码：${PASS}；端口：${PORT2}"
-fi
-
-### 第六部分：设置证书自动更新 ###
-echo "正在设置证书自动更新"
+echo_info "正在设置证书自动更新"
 (crontab -l 2>/dev/null; echo "0 0 1 * * /usr/bin/certbot renew --force-renewal") | crontab -
 (crontab -l 2>/dev/null; echo "5 0 1 * * /usr/bin/docker restart gost") | crontab -
 (crontab -l 2>/dev/null; echo "5 0 1 * * /usr/bin/docker restart gost-warp") | crontab -
-echo "证书自动更新任务已设置完毕"
 
-exit 0
+echo_info "大功告成！"
